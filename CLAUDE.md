@@ -21,7 +21,7 @@ network or firmware knowledge: it reads a mesh file and writes an STL plus statu
 - `deps/` = PrusaSlicer-style ExternalProject bundle, pinned: CGAL 5.4 (`deps/CGAL/CGAL.cmake:6`), Boost 1.75
   (`deps/Boost/Boost.cmake:131`), GMP 6.2.1 (`deps/GMP/GMP.cmake:46`), MPFR 3.1.6 (`deps/MPFR/MPFR.cmake:29`),
   Eigen 3.4.0 (`deps/EIGEN3/EIGEN3.cmake:3`). CI instead uses Homebrew `cgal@5.5 boost@1.83 mpfr eigen`.
-- No tests (no ctest, no test data). No README, no LICENSE file (code headers claim AGPLv3).
+- No unit tests; `tests/smoke_test.sh <LunarMP>` (a250t/main) runs the CLI on generated cubes. CI: `a250t-build.yml`. No README, no LICENSE file (code headers claim AGPLv3).
 
 ## Build and test (NOT verified on this Mac)
 
@@ -92,9 +92,10 @@ cmake --build build -j "$(sysctl -n hw.ncpu)"
   (`ModelRepair.cpp:343`, `ModelCheck.cpp:66`, `ModelSimplification.cpp:73`) **or** missing setting
   (`Settings.cpp:60-61`). Luban's map `{1:'Failed to load model', 2:'Error for Settings'}` (`slicer.js:172-175`) is
   inaccurate. Segfault -> Luban reports code 139.
-- Settings JSON (`CommandLine.cpp:159-235`): top level must contain `data` or `objects`; if neither, the source
-  intends exit 1 but `logError("Error parsing JSON (offset %u): %s\n")` has no varargs (`CommandLine.cpp:187`) and
-  the shipped binary segfaults (exit 139, only `[ERROR] ` printed; verified 07/11/2026). Nested objects
+- Settings JSON (`CommandLine.cpp:160-200`): top level must contain `data` or `objects`; if neither, a250t/main
+  (`4e99c4e`) exits 1 with `missing top-level 'data' or 'objects' member` (syntax errors print offset + rapidjson
+  message). Upstream/the shipped binary call `logError` with no varargs there and segfault (exit 139, only
+  `[ERROR] ` printed; verified 07/11/2026). Nested objects
   are flattened, arrays skipped, every key also stored in snake_case; numbers become `to_string(double)`, strings are
   lowercased. Keys read: `simplify_type` (`edge_length_stop|edge_count_stop|edge_ratio_stop`; an
   unrecognised value falls back to edge_length, a missing key exits 2; `Settings.cpp:568-578`), `edge_length_threshold`, `edge_count_threshold`, `edge_ratio_threshold`
