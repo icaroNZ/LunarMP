@@ -8,6 +8,7 @@
 #ifdef _OPENMP
 #include <omp.h>  //To change the number of threads to slice with.
 #endif            //_OPENMP
+#include <rapidjson/error/en.h>  //GetParseError_En for readable JSON errors.
 #include <rapidjson/filereadstream.h>
 #include <rapidjson/rapidjson.h>
 
@@ -172,7 +173,13 @@ int CommandLine::loadJSONToDataGroup(const std::string& json_filename, DataGroup
     fclose(file);
 
     if (json_document.HasParseError()) {
-        logError("Error parsing settings: 'objects' is null");
+        logError("Error parsing JSON file %s (offset %u): %s\n", json_filename.c_str(),
+                 static_cast<unsigned>(json_document.GetErrorOffset()), rapidjson::GetParseError_En(json_document.GetParseError()));
+        return FAIL;
+    }
+
+    if (!json_document.IsObject()) {
+        logError("Error parsing JSON file %s: top level is not an object\n", json_filename.c_str());
         return FAIL;
     }
 
@@ -184,7 +191,7 @@ int CommandLine::loadJSONToDataGroup(const std::string& json_filename, DataGroup
     } else if (json_document.HasMember("data")) {
         loadJSONToBaseDatas(json_document["data"], data_group);
     } else {
-        logError("Error parsing JSON (offset %u): %s\n");
+        logError("Error parsing JSON file %s: missing top-level 'data' or 'objects' member\n", json_filename.c_str());
         return FAIL;
     }
 
@@ -194,6 +201,9 @@ int CommandLine::loadJSONToDataGroup(const std::string& json_filename, DataGroup
 int CommandLine::loadJSONToBaseDatas(const rapidjson::Value& value, DataGroup& data_group) {
     if (value.IsObject()) {
         loadJSONToBaseData(value, data_group);
+    } else if (!value.IsArray()) {
+        // GetArray() on a non-array asserts (abort); "data": null etc. carries no per-object settings.
+        logWarning("JSON 'data'/'objects' is neither an object nor an array; ignoring it.\n");
     } else {
         const rapidjson::Value::ConstArray& array = value.GetArray();
 
