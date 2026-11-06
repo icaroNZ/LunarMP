@@ -1,0 +1,103 @@
+# A250T fork build: compile LunarMP with a pinned header-only CGAL 5.6.3 and run
+# tests/smoke_test.sh (check/repair/simplify/compare on generated cubes).
+# Plain CMake path on purpose: does not use sh/cmake-build.sh or the root
+# *.sh CGAL/Boost shims (CGAL >= 5.5 no longer needs the boost::prior patch).
+# CGAL is pinned to 5.6.x because Homebrew ships CGAL 6.x, which needs C++17
+# while this code base is C++14.
+name: A250T build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [a250t/main]
+
+permissions:
+  contents: read
+
+env:
+  CGAL_VERSION: 5.6.3
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS arm64 (Apple Silicon)
+            os: macos-15
+            artifact: LunarMP-macos-arm64
+          - name: macOS x86_64 (Intel, same arch as Luban's shipped binary)
+            os: macos-15-intel
+            artifact: LunarMP-macos-x86_64
+          - name: Linux x86_64
+            os: ubuntu-24.04
+            artifact: LunarMP-linux-x86_64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install boost gmp mpfr eigen@3
+          {
+            echo "DEPS_PREFIX=$(brew --prefix boost);$(brew --prefix gmp);$(brew --prefix mpfr);$(brew --prefix eigen@3)"
+            echo "GMP_DIR=$(brew --prefix gmp)"
+            echo "MPFR_DIR=$(brew --prefix mpfr)"
+            echo "NPROC=$(sysctl -n hw.ncpu)"
+          } >> "$GITHUB_ENV"
+          brew list --versions boost gmp mpfr eigen@3
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libboost-graph-dev libgmp-dev libmpfr-dev libeigen3-dev
+          {
+            echo "DEPS_PREFIX=/usr"
+            echo "NPROC=$(nproc)"
+          } >> "$GITHUB_ENV"
+          dpkg -l libboost-graph-dev libgmp-dev libmpfr-dev libeigen3-dev | tail -n 4
+
+      - name: Fetch CGAL ${{ env.CGAL_VERSION }} (header-only)
+        run: |
+          mkdir -p "$RUNNER_TEMP/cgal"
+          curl -fsSL -o "$RUNNER_TEMP/cgal.tar.xz" \
+            "https://github.com/CGAL/cgal/releases/download/v${CGAL_VERSION}/CGAL-${CGAL_VERSION}-library.tar.xz"
+          tar -xf "$RUNNER_TEMP/cgal.tar.xz" -C "$RUNNER_TEMP/cgal"
+          echo "CGAL_DIR=$RUNNER_TEMP/cgal/CGAL-${CGAL_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Configure
+        run: |
+          cmake --version
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCGAL_DIR="$CGAL_DIR" \
+            -DCMAKE_PREFIX_PATH="$DEPS_PREFIX"
+
+      - name: Build
+        run: cmake --build build -j "$NPROC"
+
+      - name: Inspect binary
+        run: |
+          file build/LunarMP
+          if [ "$RUNNER_OS" = "macOS" ]; then otool -L build/LunarMP; else ldd build/LunarMP; fi
+
+      - name: Test (version, ptest, smoke test)
+        run: |
+          ./build/LunarMP version
+          ./build/LunarMP ptest
+          bash tests/smoke_test.sh build/LunarMP "$RUNNER_TEMP/smoke"
+
+      - name: Upload binary and smoke-test outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            build/LunarMP
+            ${{ runner.temp }}/smoke/*.log
+          if-no-files-found: warn
+          retention-days: 14
