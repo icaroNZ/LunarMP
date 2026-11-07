@@ -20,22 +20,31 @@ network or firmware knowledge: it reads a mesh file and writes an STL plus statu
   (Application/Communication/CommandLine/Settings), so headers still say "Ultimaker" / "LunarTPP".
 - `deps/` = PrusaSlicer-style ExternalProject bundle, pinned: CGAL 5.4 (`deps/CGAL/CGAL.cmake:6`), Boost 1.75
   (`deps/Boost/Boost.cmake:131`), GMP 6.2.1 (`deps/GMP/GMP.cmake:46`), MPFR 3.1.6 (`deps/MPFR/MPFR.cmake:29`),
-  Eigen 3.4.0 (`deps/EIGEN3/EIGEN3.cmake:3`). CI instead uses Homebrew `cgal@5.5 boost@1.83 mpfr eigen`.
+  Eigen 3.4.0 (`deps/EIGEN3/EIGEN3.cmake:3`). Upstream release CI uses Homebrew `cgal@5.5 boost@1.83 mpfr eigen`;
+  `a250t-build.yml` uses the CGAL 5.6.3 tarball + current Homebrew/apt deps.
 - No unit tests; `tests/smoke_test.sh <LunarMP>` (a250t/main) runs the CLI on generated cubes. CI: `a250t-build.yml`. No README, no LICENSE file (code headers claim AGPLv3).
 
-## Build and test (NOT verified on this Mac)
+## Build and test (verified 07/11/2026: local macOS arm64 + GitHub Actions)
 
-This repo was **not built** in the workspace integration (`../_snapmaker2-review/integration/README.md:35`); on
-07/11/2026 the Mac has no `cmake` and Homebrew has only `gmp`. Treat the following as the untested recipe:
+Verified path = `.github/workflows/a250t-build.yml`: pinned header-only CGAL 5.6.3 tarball (Homebrew CGAL 6.x needs
+C++17), Homebrew `boost gmp mpfr eigen@3` (apt on Linux), plain CMake. Run
+[42322316297](https://github.com/icaroNZ/LunarMP/actions/runs/42322316297) on icaroNZ/LunarMP: macOS arm64, macOS
+x86_64 and Linux x86_64 all build and pass `tests/smoke_test.sh` 12/12. Local recipe (no global installs):
+`../_snapmaker2-review/integration/LunarMP.md` "Reproduce the local build", or skill `lunarmp-build-test`.
 
 ```sh
-brew install cmake cgal boost mpfr eigen        # CI pins cgal@5.5 boost@1.83 (build-on-create-release.yml)
+brew install cmake boost gmp mpfr eigen@3       # not cgal: use the CGAL-5.6.3-library.tar.xz release tarball
 cd /Users/icaro/Documents/Projects/SnapMaker/LunarMP
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release   # plain path; sh/cmake-build.sh does this on x86_64
+GMP_DIR=$(brew --prefix gmp) MPFR_DIR=$(brew --prefix mpfr) cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+  -DCGAL_DIR=<CGAL-5.6.3 root> -DCMAKE_PREFIX_PATH="$(brew --prefix boost);$(brew --prefix gmp);$(brew --prefix mpfr);$(brew --prefix eigen@3)"
 cmake --build build -j "$(sysctl -n hw.ncpu)"
-./build/LunarMP version && ./build/LunarMP ptest # the only "test" CI runs
+./build/LunarMP version && ./build/LunarMP ptest && bash tests/smoke_test.sh build/LunarMP
 ```
 
+- GMP, GMPXX and MPFR link statically (`LUNARMP_STATIC_GMP`, default ON, pre-seeds `GMPXX_LIBRARIES` with
+  `libgmpxx.a` because CGAL's `FindGMPXX` would pick the dylib). `otool -L` must show only libc++ and libSystem;
+  the workflow fails if it sees gmp/mpfr. CI macOS binaries have `minos 15.0` (Homebrew bottles), so they will not
+  run on macOS < 15.
 - `sh/cmake-build.sh` on arm64 hard-codes `-DCGAL_DIR=/usr/local/lib/cmake/CGAL`, `arm64-libs/` and
   `deps/build/install/usr/local`; it also runs `patch-cgal.sh`, which edits the CGAL headers it finds under
   `deps/build/install`, `/usr` or `/opt` (it can modify Homebrew's CGAL in place - read it first).
@@ -43,7 +52,7 @@ cmake --build build -j "$(sysctl -n hw.ncpu)"
 - Known failure: newer Boost removed `boost::prior/next` used by CGAL 5.4 `Plane_3_Triangle_3_intersection.h`;
   the 2025 shims (`patch-cgal.sh`, `process-cgal.sh`, `create-compat-layer.sh`, `src/cgal_fixes.h`,
   `src/lunarmp/utils/CGALPatches.h`) all work around that. Pin CGAL >= 5.5 to avoid it.
-- Working smoke test today: run the shipped binary
+- To compare with what Luban ships, run the shipped binary
   `../Luban/node_modules/@snapmaker/snapmaker-lunar/engine/MacOS/LunarMP` (x86_64, runs under Rosetta).
   See skill `lunarmp-run-cli`. Full build steps: skill `lunarmp-build-test`.
 
