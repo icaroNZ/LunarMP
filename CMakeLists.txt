@@ -43,6 +43,18 @@ find_package(MPFR REQUIRED)
 find_package(Eigen3 REQUIRED)
 target_include_directories(_LunarMP PUBLIC ${EIGEN3_INCLUDE_DIR})
 
+# Link GMP/GMPXX statically so the binary can drop into Luban without Homebrew.
+# FindGMP/FindMPFR in cmake/ already prefer the .a files, but CGAL's own
+# FindGMPXX searches "gmpxx" and would pick libgmpxx.dylib/.so; pre-seeding
+# the cache variable makes CGAL reuse the static archive instead.
+option(LUNARMP_STATIC_GMP "Prefer static GMP/GMPXX/MPFR archives" ON)
+if(LUNARMP_STATIC_GMP)
+  find_library(GMPXX_LIBRARIES NAMES libgmpxx.a gmpxx
+               HINTS ENV GMPXX_DIR ENV GMP_DIR
+               PATH_SUFFIXES lib
+               DOC "Path to the GMPXX library")
+endif()
+
 # CGAL - 查找最新版本，不指定特定版本
 find_package(CGAL REQUIRED)
 target_include_directories(_LunarMP PUBLIC ${CGAL_INCLUDE_DIRS})

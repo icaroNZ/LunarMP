@@ -83,7 +83,13 @@ jobs:
       - name: Inspect binary
         run: |
           file build/LunarMP
-          if [ "$RUNNER_OS" = "macOS" ]; then otool -L build/LunarMP; else ldd build/LunarMP; fi
+          if [ "$RUNNER_OS" = "macOS" ]; then deps=$(otool -L build/LunarMP); else deps=$(ldd build/LunarMP); fi
+          echo "$deps"
+          # GMP/MPFR must be linked statically so the binary runs inside Luban
+          # on machines without Homebrew/apt GMP.
+          if echo "$deps" | grep -Ei 'gmp|mpfr'; then
+            echo "::error::LunarMP links GMP/MPFR dynamically"; exit 1
+          fi
 
       - name: Test (version, ptest, smoke test)
         run: |
