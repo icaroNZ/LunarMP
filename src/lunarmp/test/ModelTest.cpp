@@ -208,6 +208,6 @@ int ModelTest::testOutput() {
 //        //        mcp.modelCompare(m_Files[i], mesh, 0.01);
 //    }
 //    outFile.close();
-//    return 0;
+    return 0;
 }
 }  // namespace lunarmp
